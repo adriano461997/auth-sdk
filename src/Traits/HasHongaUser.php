@@ -60,19 +60,63 @@ trait HasHongaUser
      */
     public function syncFromHonga(array $data): void
     {
-        $syncableFields = config('honga-auth.sync_fields', ['nome', 'email', 'telefone', 'foto']);
+        $fieldMapping = config('honga-auth.sync_fields', [
+            'nome' => 'name',
+            'email' => 'email',
+            'telefone' => 'telefone',
+            'foto_link' => 'avatar',
+            'aniversario' => 'data_nascimento',
+            'genero' => 'genero',
+        ]);
 
         $updateData = [];
 
-        foreach ($syncableFields as $field) {
-            if (isset($data[$field])) {
-                $updateData[$field] = $data[$field];
+        foreach ($fieldMapping as $hongaField => $localField) {
+            if (! isset($data[$hongaField])) {
+                continue;
             }
+
+            $value = $data[$hongaField];
+
+            // Transform genero: Honga (0,1) → local (string)
+            if ($hongaField === 'genero' && $value !== null) {
+                $value = $this->transformGenero($value);
+            }
+
+            // Avatar via URL - handle separately
+            if ($hongaField === 'foto_link' && $value) {
+                $this->syncAvatarFromUrl($value);
+
+                continue;
+            }
+
+            $updateData[$localField] = $value;
         }
 
         $updateData['honga_synced_at'] = now();
 
         $this->update($updateData);
+    }
+
+    /**
+     * Transform Honga genero (0=masculino, 1=feminino) to local string format
+     */
+    protected function transformGenero(mixed $value): string
+    {
+        return match ((int) $value) {
+            0 => 'masculino',
+            1 => 'feminino',
+            default => 'nao_informado',
+        };
+    }
+
+    /**
+     * Sync avatar from URL - override in your model if using Media Library
+     */
+    protected function syncAvatarFromUrl(string $url): void
+    {
+        // Default implementation - override in your User model
+        // if using Spatie Media Library or similar
     }
 
     /**

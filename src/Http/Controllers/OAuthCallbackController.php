@@ -26,9 +26,22 @@ class OAuthCallbackController extends Controller
     public function redirect(Request $request): RedirectResponse
     {
         $state = bin2hex(random_bytes(16));
+        $mode = $request->get('mode', 'login');
+
         Session::put('honga_auth_state', $state);
 
         $redirectUri = route('honga-auth.callback');
+
+        // If register mode, redirect to Honga registration page
+        if ($mode === 'register') {
+            $registrationUrl = config('honga-auth.routes.registration_url');
+
+            if ($registrationUrl) {
+                $continueUrl = $this->client->getAuthorizationUrl($redirectUri, $state);
+
+                return redirect()->away($registrationUrl.'?continue='.urlencode($continueUrl));
+            }
+        }
 
         $url = $this->client->getAuthorizationUrl($redirectUri, $state);
 

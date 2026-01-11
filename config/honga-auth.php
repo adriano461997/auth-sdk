@@ -43,20 +43,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Syncable Fields
+    | Syncable Fields Mapping
     |--------------------------------------------------------------------------
     |
-    | Fields that should be synced from Honga Yetu to your local user model.
-    | These fields will be updated when a user.updated webhook is received.
+    | Fields mapping from Honga Yetu to your local user model.
+    | Format: 'honga_field' => 'local_field'
+    | These fields will be synced on login and when webhooks are received.
     |
     */
 
     'sync_fields' => [
-        'nome',
-        'email',
-        'telefone',
-        'foto',
+        'nome' => 'name',
+        'email' => 'email',
+        'telefone' => 'telefone',
+        'foto_link' => 'avatar',
+        'aniversario' => 'data_nascimento',
+        'genero' => 'genero',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Force Honga Authentication
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, users can only authenticate via Honga Yetu.
+    | Traditional email/password login will be disabled.
+    |
+    */
+
+    'force_honga_auth' => env('HONGA_FORCE_AUTH', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -89,5 +104,6 @@ return [
         'login_route' => 'login',
         'register_route' => 'register',
         'home_route' => '/',
+        'registration_url' => env('HONGA_REGISTRATION_URL'),
     ],
 ];
