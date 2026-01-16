@@ -3,10 +3,10 @@
 namespace HongaYetu\AuthSDK\Http\Controllers;
 
 use HongaYetu\AuthSDK\HongaAuthClient;
+use HongaYetu\AuthSDK\Support\HongaLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
@@ -26,19 +26,25 @@ class WebhookController extends Controller
         $signature = $request->header('X-Honga-Signature');
         $eventType = $request->header('X-Honga-Event');
 
+        HongaLogger::debug('Webhook received', [
+            'event' => $eventType,
+            'has_signature' => ! empty($signature),
+        ]);
+
         $webhookSecret = config('honga-auth.webhook_secret');
 
         if ($webhookSecret && $signature) {
             if (! $this->client->validateWebhookSignature($payload, $signature, $webhookSecret)) {
-                Log::warning('HongaAuth: Invalid webhook signature');
+                HongaLogger::warning('Invalid webhook signature');
 
                 return response()->json(['error' => 'Invalid signature'], 401);
             }
+            HongaLogger::debug('Webhook signature validated');
         }
 
         $data = json_decode($payload, true);
 
-        Log::info('HongaAuth: Webhook received', [
+        HongaLogger::info('Processing webhook', [
             'event' => $eventType,
             'honga_user_id' => $data['honga_user_id'] ?? null,
         ]);
@@ -59,14 +65,20 @@ class WebhookController extends Controller
     {
         $hongaUserId = $data['honga_user_id'] ?? null;
 
+        HongaLogger::debug('Handling user.updated event', [
+            'honga_user_id' => $hongaUserId,
+        ]);
+
         if (! $hongaUserId) {
+            HongaLogger::warning('user.updated missing honga_user_id');
+
             return response()->json(['error' => 'Missing honga_user_id'], 400);
         }
 
         $userModel = config('honga-auth.user_model');
 
         if (! $userModel || ! class_exists($userModel)) {
-            Log::error('HongaAuth: User model not configured');
+            HongaLogger::error('User model not configured');
 
             return response()->json(['error' => 'User model not configured'], 500);
         }
@@ -74,7 +86,7 @@ class WebhookController extends Controller
         $user = $userModel::where('honga_user_id', $hongaUserId)->first();
 
         if (! $user) {
-            Log::info('HongaAuth: User not found for sync', ['honga_user_id' => $hongaUserId]);
+            HongaLogger::info('User not found for sync', ['honga_user_id' => $hongaUserId]);
 
             return response()->json(['status' => 'user_not_found']);
         }
@@ -83,7 +95,7 @@ class WebhookController extends Controller
             $user->syncFromHonga($data['data'] ?? []);
         }
 
-        Log::info('HongaAuth: User synced', [
+        HongaLogger::info('User synced successfully', [
             'local_user_id' => $user->id,
             'honga_user_id' => $hongaUserId,
         ]);
@@ -98,13 +110,21 @@ class WebhookController extends Controller
     {
         $hongaUserId = $data['honga_user_id'] ?? null;
 
+        HongaLogger::debug('Handling user.deleted event', [
+            'honga_user_id' => $hongaUserId,
+        ]);
+
         if (! $hongaUserId) {
+            HongaLogger::warning('user.deleted missing honga_user_id');
+
             return response()->json(['error' => 'Missing honga_user_id'], 400);
         }
 
         $userModel = config('honga-auth.user_model');
 
         if (! $userModel || ! class_exists($userModel)) {
+            HongaLogger::error('User model not configured');
+
             return response()->json(['error' => 'User model not configured'], 500);
         }
 
@@ -114,7 +134,7 @@ class WebhookController extends Controller
             $user->unlinkFromHonga();
         }
 
-        Log::info('HongaAuth: User unlinked due to deletion', [
+        HongaLogger::info('User unlinked due to deletion', [
             'honga_user_id' => $hongaUserId,
         ]);
 
@@ -129,8 +149,13 @@ class WebhookController extends Controller
         $clientSessionId = $data['client_session_id'] ?? null;
         $hongaUserId = $data['honga_user_id'] ?? null;
 
+        HongaLogger::debug('Handling user.logout event (SSO logout)', [
+            'honga_user_id' => $hongaUserId,
+            'client_session_id' => $clientSessionId,
+        ]);
+
         if (! $clientSessionId) {
-            Log::warning('HongaAuth: SSO logout missing session ID');
+            HongaLogger::warning('SSO logout missing session ID');
 
             return response()->json(['error' => 'Missing session ID'], 400);
         }
@@ -140,14 +165,14 @@ class WebhookController extends Controller
             $sessionHandler = app('session')->getHandler();
             $sessionHandler->destroy($clientSessionId);
 
-            Log::info('HongaAuth: Session destroyed via SSO logout', [
+            HongaLogger::info('Session destroyed via SSO logout', [
                 'honga_user_id' => $hongaUserId,
                 'client_session_id' => $clientSessionId,
             ]);
 
             return response()->json(['status' => 'ok']);
         } catch (\Exception $e) {
-            Log::error('HongaAuth: Failed to destroy session', [
+            HongaLogger::error('Failed to destroy session', [
                 'error' => $e->getMessage(),
                 'client_session_id' => $clientSessionId,
             ]);
@@ -163,7 +188,7 @@ class WebhookController extends Controller
     {
         $hongaUserId = $data['honga_user_id'] ?? null;
 
-        Log::info('HongaAuth: Session revoked', [
+        HongaLogger::info('Session revoked', [
             'honga_user_id' => $hongaUserId,
             'reason' => $data['reason'] ?? 'unknown',
         ]);

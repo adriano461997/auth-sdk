@@ -4,6 +4,7 @@ namespace HongaYetu\AuthSDK;
 
 use HongaYetu\AuthSDK\Exceptions\HongaAuthException;
 use HongaYetu\AuthSDK\Exceptions\InvalidTokenException;
+use HongaYetu\AuthSDK\Support\HongaLogger;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -39,7 +40,15 @@ class HongaAuthClient
             $params['state'] = $state;
         }
 
-        return $this->baseUrl.'/oauth/authorize?'.http_build_query($params);
+        $url = $this->baseUrl.'/oauth/authorize?'.http_build_query($params);
+
+        HongaLogger::debug('Generated authorization URL', [
+            'redirect_uri' => $redirectUri,
+            'state' => $state,
+            'url' => $url,
+        ]);
+
+        return $url;
     }
 
     /**
@@ -49,6 +58,11 @@ class HongaAuthClient
      */
     public function exchangeCodeForToken(string $code, string $redirectUri): array
     {
+        HongaLogger::debug('Exchanging code for token', [
+            'code' => substr($code, 0, 10).'...',
+            'redirect_uri' => $redirectUri,
+        ]);
+
         $response = Http::post($this->baseUrl.'/oauth/token', [
             'grant_type' => 'authorization_code',
             'code' => $code,
@@ -59,13 +73,26 @@ class HongaAuthClient
 
         if (! $response->successful()) {
             $error = $response->json();
+            HongaLogger::error('Token exchange failed', [
+                'status' => $response->status(),
+                'error' => $error,
+            ]);
             throw new HongaAuthException(
                 $error['error_description'] ?? 'Erro ao trocar código por token',
                 $response->status()
             );
         }
 
-        return $response->json();
+        $data = $response->json();
+
+        HongaLogger::info('Token exchange successful', [
+            'has_access_token' => isset($data['access_token']),
+            'has_user' => isset($data['user']),
+            'has_honga_session_id' => isset($data['honga_session_id']),
+            'expires_in' => $data['expires_in'] ?? null,
+        ]);
+
+        return $data;
     }
 
     /**
@@ -77,19 +104,33 @@ class HongaAuthClient
     {
         $cacheKey = 'honga_token:'.hash('sha256', $token);
 
+        HongaLogger::debug('Validating token', [
+            'cache_key' => $cacheKey,
+        ]);
+
         return Cache::remember($cacheKey, now()->addMinutes($this->cacheMinutes), function () use ($token) {
+            HongaLogger::debug('Token not in cache, calling API');
+
             $response = Http::withToken($token)
                 ->post($this->baseUrl.'/api/v1/auth/validate');
 
             if (! $response->successful()) {
+                HongaLogger::warning('Token validation failed', [
+                    'status' => $response->status(),
+                ]);
                 throw new InvalidTokenException('Token inválido ou expirado');
             }
 
             $data = $response->json();
 
             if (! ($data['valid'] ?? false)) {
+                HongaLogger::warning('Token marked as invalid');
                 throw new InvalidTokenException('Token inválido');
             }
+
+            HongaLogger::info('Token validated successfully', [
+                'user_id' => $data['user']['id'] ?? null,
+            ]);
 
             return $data;
         });
@@ -193,6 +234,11 @@ class HongaAuthClient
      */
     public function registerSession(string $accessToken, string $hongaSessionId, string $clientSessionId): bool
     {
+        HongaLogger::debug('Registering session for SSO logout', [
+            'honga_session_id' => $hongaSessionId,
+            'client_session_id' => $clientSessionId,
+        ]);
+
         try {
             $response = Http::withToken($accessToken)
                 ->post($this->baseUrl.'/api/v1/auth/sessions', [
@@ -200,9 +246,26 @@ class HongaAuthClient
                     'client_session_id' => $clientSessionId,
                 ]);
 
-            return $response->successful();
+            if ($response->successful()) {
+                HongaLogger::info('Session registered successfully', [
+                    'honga_session_id' => $hongaSessionId,
+                    'client_session_id' => $clientSessionId,
+                ]);
+
+                return true;
+            }
+
+            HongaLogger::warning('Session registration failed', [
+                'status' => $response->status(),
+                'response' => $response->json(),
+            ]);
+
+            return false;
         } catch (\Exception $e) {
-            // Log but don't fail - session registration is optional
+            HongaLogger::error('Session registration exception', [
+                'error' => $e->getMessage(),
+            ]);
+
             return false;
         }
     }

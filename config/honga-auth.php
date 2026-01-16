@@ -106,4 +106,17 @@ return [
         'home_route' => '/',
         'registration_url' => env('HONGA_REGISTRATION_URL'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Debug Configuration
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, detailed debug logs will be written to a separate log file.
+    | This is useful for troubleshooting authentication issues.
+    | The log file will be created at storage/logs/honga-auth.log
+    |
+    */
+
+    'debug' => env('HONGA_AUTH_DEBUG', false),
 ];

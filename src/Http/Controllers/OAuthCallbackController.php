@@ -4,11 +4,11 @@ namespace HongaYetu\AuthSDK\Http\Controllers;
 
 use HongaYetu\AuthSDK\Exceptions\HongaAuthException;
 use HongaYetu\AuthSDK\HongaAuthClient;
+use HongaYetu\AuthSDK\Support\HongaLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 
 class OAuthCallbackController extends Controller
@@ -28,6 +28,11 @@ class OAuthCallbackController extends Controller
         $state = bin2hex(random_bytes(16));
         $mode = $request->get('mode', 'login');
 
+        HongaLogger::debug('Starting OAuth redirect', [
+            'mode' => $mode,
+            'state' => $state,
+        ]);
+
         Session::put('honga_auth_state', $state);
 
         $redirectUri = route('honga-auth.callback');
@@ -39,11 +44,19 @@ class OAuthCallbackController extends Controller
             if ($registrationUrl) {
                 $continueUrl = $this->client->getAuthorizationUrl($redirectUri, $state);
 
+                HongaLogger::debug('Redirecting to registration URL', [
+                    'registration_url' => $registrationUrl,
+                ]);
+
                 return redirect()->away($registrationUrl.'?continue='.urlencode($continueUrl));
             }
         }
 
         $url = $this->client->getAuthorizationUrl($redirectUri, $state);
+
+        HongaLogger::debug('Redirecting to authorization URL', [
+            'url' => $url,
+        ]);
 
         return redirect()->away($url);
     }
@@ -53,8 +66,14 @@ class OAuthCallbackController extends Controller
      */
     public function callback(Request $request): RedirectResponse
     {
+        HongaLogger::debug('OAuth callback received', [
+            'has_error' => $request->has('error'),
+            'has_code' => $request->has('code'),
+            'has_state' => $request->has('state'),
+        ]);
+
         if ($request->has('error')) {
-            Log::error('HongaAuth: OAuth error', [
+            HongaLogger::error('OAuth error received', [
                 'error' => $request->get('error'),
                 'description' => $request->get('error_description'),
             ]);
@@ -68,7 +87,10 @@ class OAuthCallbackController extends Controller
         $expectedState = Session::pull('honga_auth_state');
 
         if (! $state || $state !== $expectedState) {
-            Log::warning('HongaAuth: Invalid state parameter');
+            HongaLogger::warning('Invalid state parameter', [
+                'received_state' => $state,
+                'expected_state' => $expectedState,
+            ]);
 
             return redirect()
                 ->route(config('honga-auth.routes.login_route', 'login'))
@@ -78,6 +100,8 @@ class OAuthCallbackController extends Controller
         $code = $request->get('code');
 
         if (! $code) {
+            HongaLogger::warning('No authorization code provided');
+
             return redirect()
                 ->route(config('honga-auth.routes.login_route', 'login'))
                 ->with('error', 'Código de autorização não fornecido');
@@ -90,15 +114,21 @@ class OAuthCallbackController extends Controller
             $userData = $tokenData['user'] ?? [];
 
             if (empty($userData)) {
+                HongaLogger::error('No user data in token response');
                 throw new HongaAuthException('Dados do utilizador não disponíveis');
             }
+
+            HongaLogger::debug('User data received', [
+                'honga_user_id' => $userData['id'] ?? null,
+                'email' => $userData['email'] ?? null,
+            ]);
 
             $userModel = config('honga-auth.user_model');
             $user = $userModel::findByHongaUser($userData);
 
             // User not found - must register first
             if (! $user) {
-                Log::info('HongaAuth: User not found, redirect to register', [
+                HongaLogger::info('User not found, redirect to register', [
                     'honga_user_id' => $userData['id'] ?? null,
                     'email' => $userData['email'] ?? null,
                 ]);
@@ -117,6 +147,11 @@ class OAuthCallbackController extends Controller
 
             Auth::login($user);
 
+            HongaLogger::info('User authenticated successfully', [
+                'local_user_id' => $user->id,
+                'honga_user_id' => $userData['id'] ?? null,
+            ]);
+
             // Register session for SSO logout tracking
             if (! empty($tokenData['honga_session_id'])) {
                 Session::put('honga_session_id', $tokenData['honga_session_id']);
@@ -127,24 +162,19 @@ class OAuthCallbackController extends Controller
                     session()->getId()
                 );
 
-                Log::info('HongaAuth: Session registered for SSO logout', [
+                HongaLogger::info('Session registered for SSO logout', [
                     'local_user_id' => $user->id,
                     'honga_session_id' => $tokenData['honga_session_id'],
                     'client_session_id' => session()->getId(),
                 ]);
             }
 
-            Log::info('HongaAuth: User authenticated', [
-                'local_user_id' => $user->id,
-                'honga_user_id' => $userData['id'] ?? null,
-            ]);
-
             return redirect()->intended(
                 config('honga-auth.routes.home_route', '/')
             );
 
         } catch (HongaAuthException $e) {
-            Log::error('HongaAuth: Token exchange failed', [
+            HongaLogger::error('Token exchange failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -159,13 +189,16 @@ class OAuthCallbackController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
+        HongaLogger::debug('Logout initiated');
+
         $token = Session::pull('honga_access_token');
 
         if ($token) {
             try {
                 $this->client->revokeToken($token);
+                HongaLogger::info('Token revoked successfully');
             } catch (\Exception $e) {
-                Log::warning('HongaAuth: Failed to revoke token', [
+                HongaLogger::warning('Failed to revoke token', [
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -176,6 +209,8 @@ class OAuthCallbackController extends Controller
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        HongaLogger::info('Logout completed');
 
         return redirect()->route(config('honga-auth.routes.login_route', 'login'));
     }
@@ -189,17 +224,21 @@ class OAuthCallbackController extends Controller
     {
         $sessionId = $request->get('session_id');
 
+        HongaLogger::debug('Silent logout requested', [
+            'session_id' => $sessionId,
+        ]);
+
         if ($sessionId) {
             try {
                 // Destroy the specific session
                 $sessionHandler = app('session')->getHandler();
                 $sessionHandler->destroy($sessionId);
 
-                Log::info('HongaAuth: Silent logout successful', [
+                HongaLogger::info('Silent logout successful', [
                     'session_id' => $sessionId,
                 ]);
             } catch (\Exception $e) {
-                Log::warning('HongaAuth: Silent logout failed', [
+                HongaLogger::warning('Silent logout failed', [
                     'session_id' => $sessionId,
                     'error' => $e->getMessage(),
                 ]);
