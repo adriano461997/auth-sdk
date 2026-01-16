@@ -104,6 +104,7 @@ return [
         'login_route' => 'login',
         'register_route' => 'register',
         'home_route' => '/',
+        'logout_redirect_url' => env('HONGA_LOGOUT_REDIRECT_URL'),
         'registration_url' => env('HONGA_REGISTRATION_URL'),
     ],
 

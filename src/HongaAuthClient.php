@@ -237,7 +237,9 @@ class HongaAuthClient
         $logoutUrl = config('honga-auth.logout_url', $this->baseUrl . '/sair');
 
         if (!$continueUrl) {
-            $continueUrl = url(route(config('honga-auth.routes.login_route', 'login')));
+            // Usar logout_redirect_url se definido, senão usa a raiz da aplicação
+            $logoutRedirectUrl = config('honga-auth.routes.logout_redirect_url');
+            $continueUrl = $logoutRedirectUrl ?: url('/');
         }
 
         // Obter honga_session_id da sessão (guardado durante OAuth callback)
