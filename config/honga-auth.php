@@ -109,6 +109,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SSO Logout URL
+    |--------------------------------------------------------------------------
+    |
+    | The URL to redirect users for SSO logout.
+    | When users click "Logout" in your app, they will be redirected to
+    | HongaYetu to perform a centralized logout across all connected apps.
+    |
+    */
+
+    'logout_url' => env('HONGA_AUTH_LOGOUT_URL', 'https://conta.hongayetu.com/sair'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Debug Configuration
     |--------------------------------------------------------------------------
     |

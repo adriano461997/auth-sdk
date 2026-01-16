@@ -226,6 +226,40 @@ class HongaAuthClient
     }
 
     /**
+     * Get the SSO logout URL with continue parameter
+     *
+     * @param  string|null  $continueUrl  URL to redirect after logout (defaults to login route)
+     * @return string The SSO logout URL
+     */
+    public function getSsoLogoutUrl(?string $continueUrl = null): string
+    {
+        // Usar /sair (mesmo endpoint que logout interno)
+        $logoutUrl = config('honga-auth.logout_url', $this->baseUrl . '/sair');
+
+        if (!$continueUrl) {
+            $continueUrl = url(route(config('honga-auth.routes.login_route', 'login')));
+        }
+
+        // Obter honga_session_id da sessão (guardado durante OAuth callback)
+        $hongaSessionId = session('honga_session_id');
+
+        $params = ['continue' => $continueUrl];
+        if ($hongaSessionId) {
+            $params['session'] = $hongaSessionId;
+        }
+
+        $url = $logoutUrl . '?' . http_build_query($params);
+
+        HongaLogger::debug('Generated SSO logout URL', [
+            'logout_url' => $logoutUrl,
+            'continue_url' => $continueUrl,
+            'has_session' => !empty($hongaSessionId),
+        ]);
+
+        return $url;
+    }
+
+    /**
      * Register client session for SSO logout tracking
      *
      * @param  string  $accessToken  The access token from OAuth flow

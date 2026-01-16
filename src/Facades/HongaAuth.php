@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool validateWebhookSignature(string $payload, string $signature, string $secret)
  * @method static string getBaseUrl()
  * @method static string getClientId()
+ * @method static string getSsoLogoutUrl(?string $continueUrl = null)
+ * @method static bool registerSession(string $accessToken, string $hongaSessionId, string $clientSessionId)
  *
  * @see \HongaYetu\AuthSDK\HongaAuthClient
  */
