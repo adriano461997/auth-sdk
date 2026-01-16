@@ -28,6 +28,11 @@ Route::prefix($prefix)
 
         Route::post('/logout', [OAuthCallbackController::class, 'logout'])
             ->name('honga-auth.logout');
+
+        // Silent logout for front-channel SSO logout (iframe)
+        Route::get('/logout-silent', [OAuthCallbackController::class, 'logoutSilent'])
+            ->name('honga-auth.logout-silent')
+            ->withoutMiddleware(['web', 'auth']);
     });
 
 // Webhook routes (api middleware)

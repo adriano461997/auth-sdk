@@ -105,6 +105,5 @@ return [
         'register_route' => 'register',
         'home_route' => '/',
         'registration_url' => env('HONGA_REGISTRATION_URL'),
-        'profile_edit_url' => env('HONGA_PROFILE_EDIT_URL', 'https://conta.hongayetu.com/editar_conta'),
     ],
 ];

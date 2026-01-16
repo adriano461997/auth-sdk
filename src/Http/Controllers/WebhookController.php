@@ -46,6 +46,7 @@ class WebhookController extends Controller
         return match ($eventType) {
             'user.updated' => $this->handleUserUpdated($data),
             'user.deleted' => $this->handleUserDeleted($data),
+            'user.logout' => $this->handleUserLogout($data),
             'session.revoked' => $this->handleSessionRevoked($data),
             default => response()->json(['status' => 'ignored']),
         };
@@ -118,6 +119,41 @@ class WebhookController extends Controller
         ]);
 
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Handle user.logout event - SSO logout
+     */
+    protected function handleUserLogout(array $data): JsonResponse
+    {
+        $clientSessionId = $data['client_session_id'] ?? null;
+        $hongaUserId = $data['honga_user_id'] ?? null;
+
+        if (! $clientSessionId) {
+            Log::warning('HongaAuth: SSO logout missing session ID');
+
+            return response()->json(['error' => 'Missing session ID'], 400);
+        }
+
+        try {
+            // Destroy the session
+            $sessionHandler = app('session')->getHandler();
+            $sessionHandler->destroy($clientSessionId);
+
+            Log::info('HongaAuth: Session destroyed via SSO logout', [
+                'honga_user_id' => $hongaUserId,
+                'client_session_id' => $clientSessionId,
+            ]);
+
+            return response()->json(['status' => 'ok']);
+        } catch (\Exception $e) {
+            Log::error('HongaAuth: Failed to destroy session', [
+                'error' => $e->getMessage(),
+                'client_session_id' => $clientSessionId,
+            ]);
+
+            return response()->json(['error' => 'Failed to destroy session'], 500);
+        }
     }
 
     /**

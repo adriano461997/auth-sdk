@@ -117,6 +117,23 @@ class OAuthCallbackController extends Controller
 
             Auth::login($user);
 
+            // Register session for SSO logout tracking
+            if (! empty($tokenData['honga_session_id'])) {
+                Session::put('honga_session_id', $tokenData['honga_session_id']);
+
+                $this->client->registerSession(
+                    $tokenData['access_token'],
+                    $tokenData['honga_session_id'],
+                    session()->getId()
+                );
+
+                Log::info('HongaAuth: Session registered for SSO logout', [
+                    'local_user_id' => $user->id,
+                    'honga_session_id' => $tokenData['honga_session_id'],
+                    'client_session_id' => session()->getId(),
+                ]);
+            }
+
             Log::info('HongaAuth: User authenticated', [
                 'local_user_id' => $user->id,
                 'honga_user_id' => $userData['id'] ?? null,
@@ -154,12 +171,48 @@ class OAuthCallbackController extends Controller
             }
         }
 
-        Session::forget(['honga_access_token', 'honga_token_expires_at']);
+        Session::forget(['honga_access_token', 'honga_token_expires_at', 'honga_session_id']);
         Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect()->route(config('honga-auth.routes.login_route', 'login'));
+    }
+
+    /**
+     * Silent logout endpoint for front-channel logout (iframe)
+     * This is called by Honga Yetu via hidden iframes to silently
+     * terminate the session in this app without user interaction
+     */
+    public function logoutSilent(Request $request): \Illuminate\Http\Response
+    {
+        $sessionId = $request->get('session_id');
+
+        if ($sessionId) {
+            try {
+                // Destroy the specific session
+                $sessionHandler = app('session')->getHandler();
+                $sessionHandler->destroy($sessionId);
+
+                Log::info('HongaAuth: Silent logout successful', [
+                    'session_id' => $sessionId,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('HongaAuth: Silent logout failed', [
+                    'session_id' => $sessionId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Return a 1x1 transparent GIF to make the iframe happy
+        $pixel = base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+
+        return response($pixel, 200)
+            ->header('Content-Type', 'image/gif')
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 }

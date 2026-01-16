@@ -183,4 +183,27 @@ class HongaAuthClient
     {
         return $this->clientId;
     }
+
+    /**
+     * Register client session for SSO logout tracking
+     *
+     * @param  string  $accessToken  The access token from OAuth flow
+     * @param  string  $hongaSessionId  The session ID from Honga Yetu
+     * @param  string  $clientSessionId  The local session ID
+     */
+    public function registerSession(string $accessToken, string $hongaSessionId, string $clientSessionId): bool
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->post($this->baseUrl.'/api/v1/auth/sessions', [
+                    'honga_session_id' => $hongaSessionId,
+                    'client_session_id' => $clientSessionId,
+                ]);
+
+            return $response->successful();
+        } catch (\Exception $e) {
+            // Log but don't fail - session registration is optional
+            return false;
+        }
+    }
 }
