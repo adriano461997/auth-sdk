@@ -234,9 +234,9 @@ class HongaAuthClient
     public function getSsoLogoutUrl(?string $continueUrl = null): string
     {
         // Usar /sair (mesmo endpoint que logout interno)
-        $logoutUrl = config('honga-auth.logout_url', $this->baseUrl . '/sair');
+        $logoutUrl = config('honga-auth.logout_url', $this->baseUrl.'/sair');
 
-        if (!$continueUrl) {
+        if (! $continueUrl) {
             // Usar logout_redirect_url se definido, senão usa a rota de login
             $logoutRedirectUrl = config('honga-auth.routes.logout_redirect_url');
             $continueUrl = $logoutRedirectUrl ?: route('login');
@@ -250,12 +250,12 @@ class HongaAuthClient
             $params['session'] = $hongaSessionId;
         }
 
-        $url = $logoutUrl . '?' . http_build_query($params);
+        $url = $logoutUrl.'?'.http_build_query($params);
 
         HongaLogger::debug('Generated SSO logout URL', [
             'logout_url' => $logoutUrl,
             'continue_url' => $continueUrl,
-            'has_session' => !empty($hongaSessionId),
+            'has_session' => ! empty($hongaSessionId),
         ]);
 
         return $url;
