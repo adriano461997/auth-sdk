@@ -68,7 +68,7 @@ trait HasHongaUser
     {
         if (
             $profileVersion !== null
-            && $this->hasAttribute('honga_profile_version')
+            && $this->hongaTableHasColumn('honga_profile_version')
             && (int) $this->honga_profile_version >= $profileVersion
         ) {
             $this->update(['honga_synced_at' => now()]);
@@ -111,7 +111,7 @@ trait HasHongaUser
 
         $updateData['honga_synced_at'] = now();
 
-        if ($profileVersion !== null && $this->hasAttribute('honga_profile_version')) {
+        if ($profileVersion !== null && $this->hongaTableHasColumn('honga_profile_version')) {
             $updateData['honga_profile_version'] = $profileVersion;
         }
 
@@ -123,7 +123,7 @@ trait HasHongaUser
      * Allows the SDK to behave gracefully on installations that have not yet
      * published the honga_profile_version migration.
      */
-    protected function hasAttribute(string $column): bool
+    protected function hongaTableHasColumn(string $column): bool
     {
         static $cache = [];
         $table = $this->getTable();
