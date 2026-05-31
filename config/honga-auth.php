@@ -31,6 +31,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Webhook Idempotency & Versioning
+    |--------------------------------------------------------------------------
+    |
+    | Since v1.4, incoming webhooks carry an `event_id` (UUID) and a
+    | `profile_version` (monotonic counter). To enable idempotency and
+    | out-of-order protection, publish the migrations and run them:
+    |
+    |   php artisan vendor:publish --tag=honga-auth-migrations
+    |   php artisan migrate
+    |
+    | This adds the `webhook_honga_sso_processados` table and the
+    | `honga_profile_version` column on `users`. Without the migrations the
+    | SDK still works (legacy mode) but loses idempotency guarantees.
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
     | User Model
     |--------------------------------------------------------------------------
     |

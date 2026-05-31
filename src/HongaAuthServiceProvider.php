@@ -40,7 +40,9 @@ class HongaAuthServiceProvider extends ServiceProvider
         ], 'honga-auth-config');
 
         $this->publishes([
-            __DIR__.'/../database/migrations/add_honga_user_id_to_users_table.php' => database_path('migrations/'.date('Y_m_d_His').'_add_honga_user_id_to_users_table.php'),
+            __DIR__.'/../database/migrations/add_honga_user_id_to_users_table.php' => database_path('migrations/'.date('Y_m_d_His', strtotime('-2 second')).'_add_honga_user_id_to_users_table.php'),
+            __DIR__.'/../database/migrations/add_honga_profile_version_to_users_table.php' => database_path('migrations/'.date('Y_m_d_His', strtotime('-1 second')).'_add_honga_profile_version_to_users_table.php'),
+            __DIR__.'/../database/migrations/create_webhook_honga_sso_processados_table.php' => database_path('migrations/'.date('Y_m_d_His').'_create_webhook_honga_sso_processados_table.php'),
         ], 'honga-auth-migrations');
 
         $this->loadRoutesFrom(__DIR__.'/../routes/honga-auth.php');

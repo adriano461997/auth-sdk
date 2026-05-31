@@ -7,6 +7,8 @@ use HongaYetu\AuthSDK\Support\HongaLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class WebhookController extends Controller
 {
@@ -25,9 +27,11 @@ class WebhookController extends Controller
         $payload = $request->getContent();
         $signature = $request->header('X-Honga-Signature');
         $eventType = $request->header('X-Honga-Event');
+        $eventId = $request->header('X-Honga-Event-Id');
 
         HongaLogger::debug('Webhook received', [
             'event' => $eventType,
+            'event_id' => $eventId,
             'has_signature' => ! empty($signature),
         ]);
 
@@ -43,11 +47,24 @@ class WebhookController extends Controller
         }
 
         $data = json_decode($payload, true);
+        $eventId = $eventId ?: ($data['event_id'] ?? null);
+        $eventType = $eventType ?: ($data['event'] ?? null);
 
         HongaLogger::info('Processing webhook', [
             'event' => $eventType,
+            'event_id' => $eventId,
             'honga_user_id' => $data['honga_user_id'] ?? null,
         ]);
+
+        // Idempotency guard: if we have already processed this event_id, return 200
+        // immediately so the central marks the delivery as delivered and does not
+        // retry. Requires the publishable migration create_webhook_honga_sso_processados.
+        if ($eventId && $this->markEventAsProcessed($eventId, (string) $eventType, $data)) {
+            // already processed previously
+            HongaLogger::info('Webhook duplicate ignored', ['event_id' => $eventId]);
+
+            return response()->json(['status' => 'duplicate']);
+        }
 
         return match ($eventType) {
             'user.updated' => $this->handleUserUpdated($data),
@@ -56,6 +73,37 @@ class WebhookController extends Controller
             'session.revoked' => $this->handleSessionRevoked($data),
             default => response()->json(['status' => 'ignored']),
         };
+    }
+
+    /**
+     * Tries to record the event_id. Returns true if the event was already processed
+     * before (duplicate), false otherwise (first time we see it).
+     *
+     * If the dedup table does not exist yet (migration not published), behaves as
+     * a no-op so the SDK keeps working before consumers run the new migration.
+     */
+    protected function markEventAsProcessed(string $eventId, string $eventType, array $data): bool
+    {
+        if (! Schema::hasTable('webhook_honga_sso_processados')) {
+            return false;
+        }
+
+        try {
+            DB::table('webhook_honga_sso_processados')->insert([
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'honga_user_id' => $data['honga_user_id'] ?? null,
+                'processed_at' => now(),
+            ]);
+
+            return false;
+        } catch (\Illuminate\Database\QueryException $e) {
+            // SQLSTATE 23000 = integrity constraint violation (PK already exists)
+            if ($e->getCode() === '23000') {
+                return true;
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -91,13 +139,16 @@ class WebhookController extends Controller
             return response()->json(['status' => 'user_not_found']);
         }
 
+        $profileVersion = isset($data['profile_version']) ? (int) $data['profile_version'] : null;
+
         if (method_exists($user, 'syncFromHonga')) {
-            $user->syncFromHonga($data['data'] ?? []);
+            $user->syncFromHonga($data['data'] ?? [], $profileVersion);
         }
 
         HongaLogger::info('User synced successfully', [
             'local_user_id' => $user->id,
             'honga_user_id' => $hongaUserId,
+            'profile_version' => $profileVersion,
         ]);
 
         return response()->json(['status' => 'ok']);
