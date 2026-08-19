@@ -305,4 +305,102 @@ class HongaAuthClient
             return false;
         }
     }
+
+    /**
+     * Pede à central que envie um código SMS para confirmar um número.
+     *
+     * Um backend de app não tem como provar que um número é de quem o escreveu
+     * — quem manda o SMS é a central, que também é a dona da identidade. Sem
+     * isto, o telefone que entra no registo é apenas texto que alguém escreveu
+     * num campo.
+     *
+     * Quando a conta já tem número, a resposta vem com `ja_tem: true` e **não**
+     * sai SMS nenhum: o registo segue directo.
+     *
+     * Devolve o corpo tal como veio, incluindo os `estado: 'erro'` — quem
+     * decide o que dizer ao utilizador é o backend, que é o único que sabe em
+     * que ecrã ele está.
+     *
+     * @return array{estado: string, ja_tem?: bool, telefone?: string, pedido?: string, expira_em?: string, reenviar_em?: int, telefone_mascarado?: string, texto?: string, http: int}
+     */
+    public function pedirCodigoTelefone(int $hongaUserId, string $telefone): array
+    {
+        return $this->pedidoDeProjecto('/api/v1/sso/telefone/codigo', [
+            'honga_user_id' => $hongaUserId,
+            'telefone' => $telefone,
+        ]);
+    }
+
+    /**
+     * Confirma o código e grava o número na conta Honga Yetu.
+     *
+     * Em caso de êxito devolve `estado: 'ok'` e o `telefone` gravado — é esse,
+     * e não o que a app escreveu, que o backend deve guardar localmente.
+     *
+     * @return array{estado: string, telefone?: string, profile_version?: int, texto?: string, tentativas_restantes?: int|null, http: int}
+     */
+    public function confirmarCodigoTelefone(int $hongaUserId, string $pedido, string $codigo): array
+    {
+        return $this->pedidoDeProjecto('/api/v1/sso/telefone/confirmar', [
+            'honga_user_id' => $hongaUserId,
+            'pedido' => $pedido,
+            'codigo' => $codigo,
+        ]);
+    }
+
+    /**
+     * Chamada server-to-server autenticada como este projecto ligado.
+     *
+     * As credenciais vão em cabeçalho e não em corpo: são as mesmas que já
+     * fazem o `POST /oauth/token`, portanto não há segredo novo para emitir nem
+     * para distribuir. Um token emitido à mão no painel é mais um passo que,
+     * por dar, não dá erro nenhum — dá uma funcionalidade que não responde.
+     *
+     * A falha de rede não rebenta: devolve um envelope de erro com a razão, para
+     * o backend a poder mostrar. Um `catch` que devolvesse `null` obrigava quem
+     * chama a inventar o que tinha acontecido.
+     */
+    protected function pedidoDeProjecto(string $caminho, array $corpo): array
+    {
+        try {
+            $response = Http::withHeaders([
+                'X-Client-Id' => $this->clientId,
+                'X-Client-Secret' => $this->clientSecret,
+                'Accept' => 'application/json',
+            ])->post($this->baseUrl.$caminho, $corpo);
+        } catch (\Exception $e) {
+            HongaLogger::error('Pedido de projecto falhou', [
+                'caminho' => $caminho,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'estado' => 'erro',
+                'texto' => 'Não foi possível falar com a Honga Yetu. Tenta de novo.',
+                'http' => 0,
+            ];
+        }
+
+        $data = $response->json();
+
+        if (! is_array($data)) {
+            HongaLogger::error('Resposta ilegível da central', [
+                'caminho' => $caminho,
+                'status' => $response->status(),
+            ]);
+
+            return [
+                'estado' => 'erro',
+                'texto' => 'Resposta inesperada da Honga Yetu.',
+                'http' => $response->status(),
+            ];
+        }
+
+        // O código HTTP viaja no corpo para o backend poder distinguir "código
+        // errado" (422) de "este código já não existe" (410) sem ter de olhar
+        // para o objecto Response.
+        $data['http'] = $response->status();
+
+        return $data;
+    }
 }
