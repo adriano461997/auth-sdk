@@ -98,8 +98,12 @@ class WebhookController extends Controller
 
             return false;
         } catch (\Illuminate\Database\QueryException $e) {
-            // SQLSTATE 23000 = integrity constraint violation (PK already exists)
-            if ($e->getCode() === '23000') {
+            // PK já existe = evento duplicado. O SQLSTATE varia por driver:
+            // MySQL agrega tudo em 23000; PostgreSQL usa 23505 (unique_violation).
+            // Só com 23000, cada redelivery em Postgres rebentava com 500 e a
+            // central reentregava para sempre — o oposto do que o guard promete.
+            $sqlstate = $e->errorInfo[0] ?? $e->getCode();
+            if (in_array((string) $sqlstate, ['23000', '23505'], true)) {
                 return true;
             }
             throw $e;

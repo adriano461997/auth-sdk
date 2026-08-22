@@ -94,6 +94,14 @@ trait HasHongaUser
 
             $value = $data[$hongaField];
 
+            // Um null da central significa "sem dado", não "apaga o que tens":
+            // escrever null por cima partia consumidores com colunas NOT NULL
+            // (a Sócia tem users.phone NOT NULL, e um user.updated de uma conta
+            // sem telefone rebentava o webhook com 23502).
+            if ($value === null) {
+                continue;
+            }
+
             // Transform genero: Honga (0,1) → local (string)
             if ($hongaField === 'genero' && $value !== null) {
                 $value = $this->transformGenero($value);
